@@ -1,5 +1,7 @@
-# Render IaC. Deploy with `render blueprint launch` or via the dashboard.
+# Render IaC. Deploy via the dashboard: New > Blueprint > connect this repo.
 # Free tier: 512MB RAM, 0.1 CPU, sleeps after 15 min idle.
+# A GitHub Actions cron pings /health every 14 minutes to keep it warm
+# (see .github/workflows/keep-alive.yml).
 services:
   - type: web
     name: shl-recommender
@@ -9,10 +11,15 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # LLM keys, set in the Render dashboard (sync: false keeps them
+      # out of the IaC file).
+      - key: OPENAI_API_KEY
+        sync: false
       - key: GROQ_API_KEY
-        sync: false  # set in Render dashboard
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Behavior toggles.
       - key: LOG_LEVEL
         value: INFO
       - key: EMBED_STATE_HINT
@@ -21,3 +28,7 @@ services:
         value: "25"
       - key: RECOMMENDATION_TOP_K
         value: "5"
+      # CORS allowlist. Includes the deployed Vercel frontend so the
+      # browser can call /chat directly. Update as new origins ship.
+      - key: CORS_ORIGINS
+        value: "https://web-eight-theta-60.vercel.app,https://shl-recommender.vercel.app,http://localhost:5173"
