@@ -12,12 +12,43 @@ Reads ``data/catalog.json`` (pinned snapshot), validates against
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from .models import Assessment, Catalog, CODE_TO_LONG
 
-DEFAULT_CATALOG_PATH = Path(__file__).resolve().parents[3] / "data" / "catalog.json"
+
+def _resolve_default_catalog_path() -> Path:
+    """Find ``catalog.json`` in any of the locations we ship to.
+
+    In local dev the loader sits at
+    ``<repo>/src/shl_recommender/catalog/loader.py`` and the catalog
+    is at ``<repo>/data/catalog.json``. In a built / installed wheel
+    the module lives under ``site-packages/`` and that relative path
+    points to nowhere. The Dockerfile keeps the catalog at
+    ``/app/data/catalog.json`` and runs from ``WORKDIR=/app``.
+
+    Resolution order (first hit wins):
+
+    1. ``$CATALOG_PATH`` env var, when set.
+    2. ``./data/catalog.json`` relative to the current working
+       directory (matches both ``cd <repo>`` in dev and ``WORKDIR /app``
+       in the container).
+    3. ``../../../data/catalog.json`` relative to this module
+       (legacy, kept for compatibility with running ``pytest`` from
+       inside ``src/``).
+    """
+    env = os.environ.get("CATALOG_PATH")
+    if env:
+        return Path(env)
+    cwd_path = Path.cwd() / "data" / "catalog.json"
+    if cwd_path.exists():
+        return cwd_path
+    return Path(__file__).resolve().parents[3] / "data" / "catalog.json"
+
+
+DEFAULT_CATALOG_PATH = _resolve_default_catalog_path()
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +102,9 @@ def load_catalog(path: Path | str | None = None) -> CatalogIndex:
 
     Raises ``ValidationError`` from Pydantic on any schema drift.
     """
-    p = Path(path) if path is not None else DEFAULT_CATALOG_PATH
+    # Re-resolve at call time so changes to ``$CATALOG_PATH`` (e.g.
+    # during tests) take effect even if the module was already imported.
+    p = Path(path) if path is not None else _resolve_default_catalog_path()
     with p.open(encoding="utf-8") as f:
         raw = json.load(f)
     catalog = Catalog.model_validate(raw)
