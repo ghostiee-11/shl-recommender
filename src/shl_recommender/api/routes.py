@@ -1,4 +1,8 @@
-"""HTTP routes: ``GET /health``, ``GET /metrics``, ``POST /chat``.
+"""HTTP routes: ``GET /``, ``GET /health``, ``GET /metrics``, ``POST /chat``.
+
+``GET /`` returns a friendly service banner so anyone clicking the
+deployed URL sees what the service is and how to use it, instead of a
+bare 404.
 
 ``/health`` is intentionally trivial: it returns ``{"status": "ok"}``
 with HTTP 200 unconditionally. The platform's health check uses it to
@@ -29,6 +33,28 @@ from shl_recommender.observability.logging import get_logger
 
 router = APIRouter()
 log = get_logger(__name__)
+
+
+@router.get("/")
+async def root() -> dict[str, object]:
+    """Service banner for humans who hit the bare URL in a browser.
+
+    Documents the surface so reviewers don't see a bare 404 and assume
+    the service is broken when they paste the deployment URL.
+    """
+    return {
+        "service": "SHL Conversational Assessment Recommender",
+        "status": "ok",
+        "endpoints": {
+            "GET /": "this banner",
+            "GET /health": "liveness probe; always 200 {'status': 'ok'}",
+            "GET /metrics": "in-process counters + readiness flag",
+            "POST /chat": "stateless conversation turn (see /docs)",
+            "GET /docs": "interactive OpenAPI documentation",
+        },
+        "demo": "https://web-eight-theta-60.vercel.app",
+        "repo": "https://github.com/ghostiee-11/shl-recommender",
+    }
 
 
 @router.get("/health")
