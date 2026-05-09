@@ -1,5 +1,8 @@
 # SHL Conversational Assessment Recommender
 
+> **Live demo:** https://web-eight-theta-60.vercel.app  
+> **Live API:** https://shl-recommender-m045.onrender.com (`/health`, `/chat`, `/metrics`)
+
 A conversational agent that turns a vague hiring intent, *"I need a Java dev who works with stakeholders"*, into a **grounded shortlist of SHL Individual Test Solutions** through dialogue. Built for the SHL Labs AI Intern take-home.
 
 The agent **clarifies** when it doesn't have enough context, **recommends** when it does, **refines** when the user changes their mind, **compares** two named instruments side-by-side, and **refuses** anything off-topic, all in ≤ 8 turns and ≤ 30 s per call, with every URL in the shortlist verified against the live SHL catalog.
@@ -192,6 +195,7 @@ shl-recommender/
 
 ## Submission
 
-- **Live API**: `https://<your-render-app>.onrender.com` (`/health` and `/chat` reachable)
-- **Live demo**: `https://<your-vercel-app>.vercel.app`
+- **Live API**: https://shl-recommender-m045.onrender.com (`/health`, `/chat`, `/metrics` reachable)
+- **Live demo**: https://web-eight-theta-60.vercel.app
 - **Approach doc**: [`docs/approach.md`](docs/approach.md), 2 pages, design choices, what didn't work, AI-tool disclosure
+- **Repo**: https://github.com/ghostiee-11/shl-recommender
