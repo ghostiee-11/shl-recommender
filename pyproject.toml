@@ -14,8 +14,10 @@ dependencies = [
     "structlog>=24.4",
     "rank-bm25>=0.2.2",
     "faiss-cpu>=1.9",
-    "sentence-transformers>=3.3",
     "numpy>=1.26",
+    # LLM providers. Embeddings are also done via OpenAI's API (see
+    # data/catalog_embeddings.npy for the pre-computed matrix), so we
+    # no longer ship torch / sentence-transformers in the runtime image.
     "openai>=1.0",
     "groq>=1.0",
     "google-genai>=2.0",

@@ -48,6 +48,7 @@ from shl_recommender.llm.base import LLMClient
 from shl_recommender.llm.gemini_client import GeminiLLM
 from shl_recommender.llm.groq_client import GroqLLM
 from shl_recommender.llm.openai_client import OpenAILLM
+from shl_recommender.llm.openai_embeddings import OpenAIEmbedder
 from shl_recommender.llm.router import LLMRouter
 from shl_recommender.llm.throttle import RateLimitedLLM
 from shl_recommender.observability.logging import configure as configure_logging
@@ -108,8 +109,10 @@ def _build_llm(settings: Settings) -> LLMClient:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build heavy state at startup; tear down on shutdown.
 
-    The dense embedding model load is the dominant cost (~25s on a
-    cold container). On Render free tier this runs once per cold start.
+    No more local embedding model load: the catalog vectors are
+    pre-computed and ship as ``data/catalog_embeddings.npy``. The
+    runtime image dropped torch + sentence-transformers + transformers
+    (~430 MB) and the cold start is now ~5 s instead of ~30 s.
     """
     settings = cast(Settings, app.state.settings)
     configure_logging(settings.log_level)
@@ -125,10 +128,21 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("bm25_built", elapsed_ms=int((time.perf_counter() - t1) * 1000))
 
     t1 = time.perf_counter()
-    dense = DenseIndex(catalog.search_docs)
-    log.info("dense_built", elapsed_ms=int((time.perf_counter() - t1) * 1000))
+    dense = DenseIndex(settings.catalog_embeddings_path)
+    log.info(
+        "dense_loaded",
+        items=len(dense),
+        dim=dense.dim,
+        elapsed_ms=int((time.perf_counter() - t1) * 1000),
+    )
 
-    retriever = HybridRetriever(bm25, dense, catalog)
+    if not settings.openai_api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is required (used for query-time embeddings)."
+        )
+    encoder = OpenAIEmbedder(settings.openai_api_key)
+
+    retriever = HybridRetriever(bm25, dense, catalog, encoder=encoder)
     llm = _build_llm(settings)
     reranker = LLMReranker(llm, catalog)
     orch = Orchestrator(

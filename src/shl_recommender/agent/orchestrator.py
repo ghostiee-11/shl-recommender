@@ -230,7 +230,7 @@ class Orchestrator:
             slots_query = build_query(all_user_messages) or last_user
         bm25_query = expand_query(slots_query)
 
-        candidates = self._retriever.search(
+        candidates = await self._retriever.search(
             slots_query,
             bm25_query=bm25_query,
             top_n=CANDIDATE_POOL,

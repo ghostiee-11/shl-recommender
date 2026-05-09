@@ -1,7 +1,9 @@
-# Multi-stage build: builder installs deps + warms HF model cache; final
-# stage is a slim non-root runtime. The bge-small embedding model is
-# pre-downloaded into the image so the first /chat after deploy doesn't
-# pay a network-fetch penalty.
+# Multi-stage build: builder installs deps; final stage is a slim
+# non-root runtime. No local ML model: catalog embeddings are
+# pre-computed offline (data/catalog_embeddings.npy) and query
+# embeddings are fetched from OpenAI at request time. That keeps the
+# runtime image to ~200 MB and the cold-start RSS to ~120 MB,
+# comfortably under Render's 512 MB free-tier ceiling.
 
 FROM python:3.12-slim AS builder
 
@@ -21,20 +23,8 @@ WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Install torch from the CPU-only PyTorch wheel index FIRST. Without
-# this, ``pip install .`` would pull torch + the entire CUDA toolchain
-# (~4 GB of nvidia-* wheels) which is unusable on Render's CPU-only
-# free tier and would also OOM at runtime when imported.
-# ``--extra-index-url`` lets pip still reach PyPI for everything else,
-# while preferring CPU torch wheels when present.
 RUN pip install --upgrade pip \
- && pip install --no-cache-dir \
-        --extra-index-url https://download.pytorch.org/whl/cpu \
-        torch \
  && pip install --no-cache-dir .
-
-# Pre-warm the embedding model so the runtime image doesn't fetch from HF on first request.
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
 
 
 # ---- runtime ----
@@ -43,7 +33,6 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
-    HF_HOME=/app/.cache/huggingface \
     LOG_LEVEL=INFO
 
 # Non-root user for least-privilege.
@@ -53,7 +42,6 @@ WORKDIR /app
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --from=builder /root/.cache/huggingface /app/.cache/huggingface
 COPY src ./src
 COPY data ./data
 
@@ -62,6 +50,6 @@ USER app
 
 EXPOSE 8000
 
-# Single uvicorn worker — Render free tier is 512MB RAM and the embedding
-# model + FAISS index are loaded once per process. Multiple workers would OOM.
+# Single uvicorn worker. Render free tier is 512 MB RAM; multiple
+# workers would each load FAISS + the catalog into memory.
 CMD ["sh", "-c", "uvicorn shl_recommender.api.app:app --host 0.0.0.0 --port ${PORT}"]

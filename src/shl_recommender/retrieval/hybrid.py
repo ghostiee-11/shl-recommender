@@ -24,7 +24,7 @@ from shl_recommender.catalog.loader import CatalogIndex
 from shl_recommender.catalog.models import TestTypeCode
 
 from .bm25 import BM25Index
-from .dense import DenseIndex
+from .dense import AsyncEncoder, DenseIndex
 
 DEFAULT_RRF_K = 60
 
@@ -63,10 +63,11 @@ class HybridRetriever:
     """Wires BM25 + dense + RRF fusion + metadata filtering.
 
     Pure orchestration, owns no state of its own beyond references
-    to the underlying indexes.
+    to the underlying indexes and the (async) query encoder used by
+    the dense stage.
     """
 
-    __slots__ = ("_bm25", "_dense", "_catalog", "_rrf_k")
+    __slots__ = ("_bm25", "_dense", "_encoder", "_catalog", "_rrf_k")
 
     def __init__(
         self,
@@ -74,6 +75,7 @@ class HybridRetriever:
         dense: DenseIndex,
         catalog: CatalogIndex,
         *,
+        encoder: AsyncEncoder,
         rrf_k: int = DEFAULT_RRF_K,
     ) -> None:
         if len(bm25) != len(dense) != len(catalog):
@@ -83,10 +85,11 @@ class HybridRetriever:
             )
         self._bm25 = bm25
         self._dense = dense
+        self._encoder = encoder
         self._catalog = catalog
         self._rrf_k = rrf_k
 
-    def search(
+    async def search(
         self,
         query: str,
         *,
@@ -106,8 +109,15 @@ class HybridRetriever:
         ``allowed_test_types`` is a hard post-filter on the primary
         test type code of each candidate.
         """
-        bm25_hits = self._bm25.search(bm25_query if bm25_query is not None else query, k=per_index_k)
-        dense_hits = self._dense.search(query, k=per_index_k)
+        bm25_hits = self._bm25.search(
+            bm25_query if bm25_query is not None else query, k=per_index_k
+        )
+        # Dense stage may fail (network, rate limit, etc). On failure
+        # we degrade to BM25-only rather than 500 the request.
+        try:
+            dense_hits = await self._dense.search_async(query, per_index_k, self._encoder)
+        except Exception:  # noqa: BLE001 - any encoder failure is non-fatal
+            dense_hits = []
         fused = reciprocal_rank_fusion(
             [bm25_hits, dense_hits],
             k=self._rrf_k,

@@ -1,111 +1,132 @@
-"""Dense retrieval over the catalog using ``bge-small-en-v1.5``.
+"""Dense retrieval over the catalog.
 
-Choices and their reasoning:
+Production runs against pre-computed catalog embeddings stored in
+``data/catalog_embeddings.npy`` (shipped with the repo). At query time
+the agent calls an external embedder (OpenAI ``text-embedding-3-small``
+by default), then runs a flat inner-product search on the cached
+matrix.
 
-* **bge-small (33M params, 384-d).** Strong MTEB scores per parameter,
-  small enough to bake into a 1GB Docker image, runs on CPU in <1s
-  per batch of 50. Bigger models (bge-base, e5-large) only matter
-  when the corpus is much larger than 377 items.
-* **FAISS IndexFlatIP.** With 377 384-d vectors, the index is
-  ~570 KB and search is exact in O(n·d). Approximate indexes (IVF,
-  HNSW) only help past ~10⁵ vectors.
-* **L2-normalized embeddings + inner product = cosine similarity.**
-  This avoids the need to convert distances or maintain a norm cache.
+Why this shape:
 
-The encoder is injectable so unit tests can use a deterministic fake
-without importing torch.
+* **Pre-compute the catalog.** The catalog is pinned and stable, so
+  there's no reason to re-embed on every cold start. Shipping the
+  numpy matrix lets the runtime image drop torch + sentence-
+  transformers + transformers + tokenizers entirely (~430 MB).
+* **External query encoder.** One async API call per recommend turn.
+  ~150 ms TTFT typical, well under the 25 s per-call budget.
+* **FAISS IndexFlatIP.** With ~377 1536-d vectors, the index is
+  ~2.3 MB and search is exact in O(n·d). No need for IVF / HNSW.
+* **Async query interface** so the orchestrator stays end-to-end
+  async; a thin sync ``encode_one_sync`` shim covers tests.
+
+The encoder is injected through a Protocol so unit tests can pass a
+deterministic fake without touching the OpenAI SDK.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Protocol
 
 import faiss
 import numpy as np
 
-DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
-EMBED_DIM = 384
-
-# bge-family recommendation: prefix retrieval queries.
-# Without this prefix, MTEB scores drop by ~1-2 pp.
-BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+DEFAULT_EMBED_DIM = 1536  # text-embedding-3-small
 
 
-class Encoder(Protocol):
-    """Minimal interface used by :class:`DenseIndex`.
+class AsyncEncoder(Protocol):
+    """Minimal async embedder interface used at query time.
 
-    Compatible with ``sentence_transformers.SentenceTransformer`` and
-    with hand-rolled fakes in tests.
+    Compatible with :class:`shl_recommender.llm.openai_embeddings.OpenAIEmbedder`
+    and with hand-rolled fakes in tests.
     """
 
-    def encode(
-        self,
-        sentences: list[str],
-        *,
-        batch_size: int = ...,
-        normalize_embeddings: bool = ...,
-        convert_to_numpy: bool = ...,
-        show_progress_bar: bool = ...,
-    ) -> np.ndarray:
+    async def encode_one(self, text: str, *, timeout_s: float = ...) -> np.ndarray:
         ...
 
 
-def _default_encoder(model_name: str) -> Encoder:
-    # Local import keeps unit tests free of the torch dependency.
-    from sentence_transformers import SentenceTransformer
-
-    return SentenceTransformer(model_name)
-
-
 class DenseIndex:
-    """In-memory dense index. Built once at app startup."""
+    """In-memory dense index over pre-computed catalog embeddings.
 
-    __slots__ = ("_model", "_index", "_size", "_dim")
+    Construct with either:
+
+    * a path to a ``.npy`` matrix (shape ``(n_items, dim)``,
+      L2-normalized), or
+    * the matrix directly (for tests).
+
+    Then call :meth:`search_async` with the user query string and an
+    :class:`AsyncEncoder` to get the top-k matches.
+    """
+
+    __slots__ = ("_index", "_size", "_dim")
 
     def __init__(
         self,
-        docs: Iterable[str],
-        model_name: str = DEFAULT_MODEL,
-        *,
-        batch_size: int = 64,
-        encoder: Encoder | None = None,
+        catalog_embeddings: np.ndarray | Path | str,
     ) -> None:
-        docs_list = list(docs)
-        if not docs_list:
-            raise ValueError("DenseIndex requires at least one document")
-        self._model = encoder if encoder is not None else _default_encoder(model_name)
-        # ``normalize_embeddings=True`` gives unit-norm vectors so we
-        # can use IndexFlatIP for cosine.
-        embeddings = self._model.encode(
-            docs_list,
-            batch_size=batch_size,
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        ).astype(np.float32)
-        self._dim = embeddings.shape[1]
+        if isinstance(catalog_embeddings, (str, Path)):
+            arr = np.load(str(catalog_embeddings)).astype(np.float32)
+        else:
+            arr = np.asarray(catalog_embeddings, dtype=np.float32)
+        if arr.ndim != 2 or arr.shape[0] == 0:
+            raise ValueError(
+                f"catalog_embeddings must be a non-empty 2-D array, got shape {arr.shape}"
+            )
+        self._dim = int(arr.shape[1])
         self._index = faiss.IndexFlatIP(self._dim)
-        self._index.add(embeddings)
-        self._size = embeddings.shape[0]
+        self._index.add(arr)
+        self._size = int(arr.shape[0])
 
     def __len__(self) -> int:
         return self._size
 
-    def search(self, query: str, k: int) -> list[tuple[int, float]]:
-        """Return top-``k`` ``(doc_index, similarity)`` pairs."""
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    async def search_async(
+        self,
+        query: str,
+        k: int,
+        encoder: AsyncEncoder,
+    ) -> list[tuple[int, float]]:
+        """Encode ``query`` via ``encoder`` then return top-``k`` hits."""
+        if k <= 0 or not query.strip():
+            return []
+        q = await encoder.encode_one(query)
+        return self._search_vector(q, k)
+
+    def search_with_vector(self, q: np.ndarray, k: int) -> list[tuple[int, float]]:
+        """Synchronous search when the caller already has the vector.
+
+        Used by tests and by callers that batch-encoded upstream.
+        """
+        return self._search_vector(q, k)
+
+    def _search_vector(self, q: np.ndarray, k: int) -> list[tuple[int, float]]:
         if k <= 0:
             return []
-        prefixed = f"{BGE_QUERY_PREFIX}{query}"
-        q = self._model.encode(
-            [prefixed],
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        ).astype(np.float32)
-        scores, idxs = self._index.search(q, min(k, self._size))
+        q2 = np.asarray(q, dtype=np.float32).reshape(1, -1)
+        if q2.shape[1] != self._dim:
+            raise ValueError(
+                f"query dim {q2.shape[1]} does not match index dim {self._dim}"
+            )
+        scores, idxs = self._index.search(q2, min(k, self._size))
         return [
             (int(i), float(s))
             for i, s in zip(idxs[0], scores[0], strict=True)
             if i >= 0
         ]
+
+
+def build_from_texts_sync(texts: Iterable[str], encoder: object) -> np.ndarray:
+    """One-time helper used by ``scripts/embed_catalog.py``.
+
+    ``encoder`` is an :class:`OpenAIEmbedder` instance (or a fake);
+    we call ``encode`` on it synchronously through ``asyncio.run``
+    so the offline script stays a plain script.
+    """
+    import asyncio
+
+    return asyncio.run(encoder.encode(list(texts)))  # type: ignore[union-attr]

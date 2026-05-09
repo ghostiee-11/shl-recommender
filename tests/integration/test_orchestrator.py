@@ -2,20 +2,21 @@
 
 These wire the *real* catalog loader + retrievers + reranker, but
 inject a stub LLM that returns deterministic JSON for every call
-(slot extractor, refusal tiebreak, LLM reranker). That way the
-test exercises the full orchestrator state machine without
-network dependencies.
+(slot extractor, refusal tiebreak, LLM reranker) and a deterministic
+fake embedder for the dense stage. The whole suite runs offline.
 
-The dense embedding model is the one heavy dep we DO load (because
-the retriever needs real embeddings to be meaningful). It loads
-once per session via a module-scoped fixture.
+We use a tiny per-item hash to fake catalog vectors (same dim across
+catalog + queries) so the dense fusion still contributes ranking
+signal without any network call.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Sequence
 
+import numpy as np
 import pytest
 import pytest_asyncio
 
@@ -27,6 +28,28 @@ from shl_recommender.retrieval.bm25 import BM25Index
 from shl_recommender.retrieval.dense import DenseIndex
 from shl_recommender.retrieval.hybrid import HybridRetriever
 from shl_recommender.retrieval.llm_rerank import LLMReranker
+
+_FAKE_EMBED_DIM = 32
+
+
+def _hash_vec(text: str) -> np.ndarray:
+    """Cheap deterministic 32-d "embedding" for offline tests.
+
+    Each byte of the SHA-256 digest seeds one dimension. Output is
+    L2-normalized so it composes with the FAISS inner-product index
+    the same way real embeddings would.
+    """
+    h = hashlib.sha256(text.encode("utf-8")).digest()
+    raw = np.frombuffer(h[: _FAKE_EMBED_DIM], dtype=np.uint8).astype(np.float32) / 255.0
+    n = np.linalg.norm(raw)
+    return raw / n if n > 0 else raw
+
+
+class _FakeAsyncEncoder:
+    """Mirrors :class:`OpenAIEmbedder` for offline tests."""
+
+    async def encode_one(self, text: str, *, timeout_s: float = 8.0) -> np.ndarray:
+        return _hash_vec(text)
 
 
 class _RoutedStubLLM:
@@ -88,8 +111,9 @@ def index() -> object:
 @pytest_asyncio.fixture(scope="module")
 async def retriever(index: object) -> HybridRetriever:
     bm25 = BM25Index(index.search_docs)  # type: ignore[attr-defined]
-    dense = DenseIndex(index.search_docs)  # type: ignore[attr-defined]
-    return HybridRetriever(bm25, dense, index)  # type: ignore[arg-type]
+    matrix = np.stack([_hash_vec(d) for d in index.search_docs])  # type: ignore[attr-defined]
+    dense = DenseIndex(matrix)
+    return HybridRetriever(bm25, dense, index, encoder=_FakeAsyncEncoder())  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

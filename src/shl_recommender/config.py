@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     # Recommendation sizing.
     recommendation_top_k: int = Field(default=5, ge=1, le=10)
 
+    # Pre-computed catalog embeddings (text-embedding-3-small, 1536-d,
+    # L2-normalized, shape (n_items, 1536)). Shipped in the repo so the
+    # runtime image doesn't need torch / sentence-transformers.
+    catalog_embeddings_path: str = Field(
+        default="data/catalog_embeddings.npy",
+        description="Path to the pre-computed catalog embedding matrix.",
+    )
+
     # CORS, allow the frontend (local dev + deployed) to call the API.
     # Comma-separated string env var → list at runtime. Empty default
     # means CORS is disabled (no Access-Control headers added).
