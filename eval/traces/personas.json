@@ -1,0 +1,110 @@
+[
+  {
+    "trace_id": "C1",
+    "role_summary": "The user is hiring for senior leadership positions",
+    "facts": [
+      "The pool consists of CXOs and director-level positions",
+      "Candidates have more than 15 years of experience",
+      "Selection involves comparing candidates against a leadership benchmark"
+    ]
+  },
+  {
+    "trace_id": "C2",
+    "role_summary": "The user is hiring a senior Rust engineer",
+    "facts": [
+      "The user is hiring a senior Rust engineer",
+      "The role is for high-performance networking infrastructure",
+      "The user is open to adding a cognitive test"
+    ]
+  },
+  {
+    "trace_id": "C3",
+    "role_summary": "The user is hiring for entry-level contact centre agents",
+    "facts": [
+      "The user is screening 500 candidates",
+      "The role involves inbound calls",
+      "The role has a customer service focus",
+      "The language required is English",
+      "The location is the US",
+      "The user wants to use a simulation for volume hiring and a different solution for finalists"
+    ]
+  },
+  {
+    "trace_id": "C4",
+    "role_summary": "The user is hiring graduate financial analysts",
+    "facts": [
+      "The hire is for graduate financial analysts",
+      "The candidates are final-year students with no work experience",
+      "The test should include numerical reasoning",
+      "The test should include a finance knowledge component",
+      "A situational judgement element is required",
+      "The situational judgement element should be work-context decision making for graduates",
+      "Numerical and situational judgement tests will be used as the first filter",
+      "Domain tests will be used for shortlisted candidates"
+    ]
+  },
+  {
+    "trace_id": "C5",
+    "role_summary": "The user is a recruiter hiring for a Sales organization role",
+    "facts": [
+      "The user needs to re-skill their Sales organization",
+      "The user is considering OPQ and OPQ MQ Sales Report as assessment solutions",
+      "The user plans to use OPQ for all candidates and add MQ for motivators in the Sales Report"
+    ]
+  },
+  {
+    "trace_id": "C6",
+    "role_summary": "The user is hiring plant operators for a chemical facility",
+    "facts": [
+      "The user is hiring for a chemical facility",
+      "The role is for plant operators",
+      "Safety is the top priority",
+      "The industry is industrial",
+      "The Safety & Dependability 8.0 bundle is the preferred test"
+    ]
+  },
+  {
+    "trace_id": "C7",
+    "role_summary": "The user is hiring bilingual healthcare admin staff in South Texas",
+    "facts": [
+      "The staff will handle patient records",
+      "The staff need to be assessed in Spanish",
+      "HIPAA compliance is critical for the role",
+      "The staff are functionally bilingual",
+      "The staff are English fluent for written work"
+    ]
+  },
+  {
+    "trace_id": "C8",
+    "role_summary": "The user is a recruiter hiring for an admin assistant role",
+    "facts": [
+      "The recruiter needs to quickly screen admin assistants",
+      "The admin assistants will use Excel and Word daily",
+      "The recruiter is open to adding a simulation to the screening process"
+    ]
+  },
+  {
+    "trace_id": "C9",
+    "role_summary": "The user is hiring a Senior Full-Stack Engineer",
+    "facts": [
+      "The engineer should have 5+ years of experience",
+      "The engineer should have experience with Core Java, Spring, Angular, SQL, AWS, and Docker",
+      "The engineer will own end-to-end microservice delivery and contribute to architectural decisions",
+      "The engineer will mentor mid-level engineers",
+      "The engineer should have strong CI/CD and cloud-native experience",
+      "The engineer will work on existing Java services, not greenfield projects",
+      "The role is a senior individual contributor with no direct management responsibilities",
+      "Verify G+ will be included in the assessment battery"
+    ]
+  },
+  {
+    "trace_id": "C10",
+    "role_summary": "The user is hiring for a graduate management trainee scheme",
+    "facts": [
+      "The role is for recent graduates",
+      "A full battery assessment is needed, including cognitive, personality, and situational judgement",
+      "The OPQ32r is too long and needs to be replaced with something shorter",
+      "The final assessment will include Verify G+ and Graduate Scenarios"
+    ]
+  }
+]

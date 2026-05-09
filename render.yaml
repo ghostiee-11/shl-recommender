@@ -1,0 +1,23 @@
+# Render IaC. Deploy with `render blueprint launch` or via the dashboard.
+# Free tier: 512MB RAM, 0.1 CPU, sleeps after 15 min idle.
+services:
+  - type: web
+    name: shl-recommender
+    runtime: docker
+    plan: free
+    region: oregon  # closest to most LLM API endpoints
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # set in Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: EMBED_STATE_HINT
+        value: "true"
+      - key: REQUEST_BUDGET_S
+        value: "25"
+      - key: RECOMMENDATION_TOP_K
+        value: "5"

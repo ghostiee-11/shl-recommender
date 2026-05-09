@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Env
+.env
+.env.local
+
+# Eval outputs (kept locally, not shipped)
+eval/reports/*
+!eval/reports/.gitkeep
+
+# Local model cache
+.cache/
+models/
+
+# Node / Vite frontend
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+web/.env.production
+
+# OS / playwright artifacts
+.playwright-mcp/
+
+# Docker / CI scratch
+*.log
