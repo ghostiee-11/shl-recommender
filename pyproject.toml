@@ -16,6 +16,7 @@ dependencies = [
     "faiss-cpu>=1.9",
     "sentence-transformers>=3.3",
     "numpy>=1.26",
+    "openai>=1.0",
     "groq>=1.0",
     "google-genai>=2.0",
 ]

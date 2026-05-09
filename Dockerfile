@@ -21,8 +21,16 @@ WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Install package + runtime deps.
+# Install torch from the CPU-only PyTorch wheel index FIRST. Without
+# this, ``pip install .`` would pull torch + the entire CUDA toolchain
+# (~4 GB of nvidia-* wheels) which is unusable on Render's CPU-only
+# free tier and would also OOM at runtime when imported.
+# ``--extra-index-url`` lets pip still reach PyPI for everything else,
+# while preferring CPU torch wheels when present.
 RUN pip install --upgrade pip \
+ && pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        torch \
  && pip install --no-cache-dir .
 
 # Pre-warm the embedding model so the runtime image doesn't fetch from HF on first request.
