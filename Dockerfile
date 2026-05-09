@@ -15,10 +15,13 @@ RUN apt-get update \
 
 WORKDIR /build
 
-COPY pyproject.toml ./
+# Hatchling reads pyproject.toml and follows ``readme = "README.md"``,
+# so the README must be inside the build context or metadata generation
+# fails before any code is touched.
+COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Install package + runtime deps. Hatchling reads from pyproject.
+# Install package + runtime deps.
 RUN pip install --upgrade pip \
  && pip install --no-cache-dir .
 
